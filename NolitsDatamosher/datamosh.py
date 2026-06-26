@@ -1069,6 +1069,115 @@ def run_runmeme_mode(args):
 
     _log(f"Done! {out}", "ok")
 
+def _rot_build_chop_points(duration, min_chop=0.12, max_chop=0.9):
+    points = []
+    cursor = 0.0
+    while cursor < duration - 0.05:
+        seg_dur = random.uniform(min_chop, max_chop) * random.uniform(0.3, 1.0)
+        seg_dur = min(seg_dur, duration - cursor)
+        if seg_dur < 0.04:
+            break
+        points.append((cursor, seg_dur))
+        cursor += seg_dur
+    return points
+
+def chaotic_rot_tail(tail_raw: Path, work: Path, gop, mosh_qscale, crf, stutter_chance, stutter_dups, has_audio, src_for_audio, intro_dur, distort_gain=6.0):
+    tail_dur = _probe_duration(tail_raw)
+    chops = _rot_build_chop_points(tail_dur)
+    _log(f"chaotic rot: {len(chops)} chopped segment(s) over {tail_dur:.3f}s")
+
+    seg_video_infos = []
+
+    for idx, (start, seg_dur) in enumerate(chops):
+        raw_seg = work / f"rot_raw_{idx}.mp4"
+        subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(tail_raw), "-ss", str(start), "-t", str(seg_dur), "-c:v", "libx264", "-preset", "fast", "-crf", str(crf), "-pix_fmt", "yuv420p", "-vsync", "cfr", "-an", str(raw_seg)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        avi_seg = work / f"rot_{idx}.avi"
+        transcode_to_avi(raw_seg, avi_seg, gop=gop, qscale=mosh_qscale)
+
+        mosh_seg = work / f"rot_mosh_{idx}.avi"
+        try:
+            real_datamosh(avi_seg, mosh_seg, start=1, end=10**9, remove_all=True, keep_every=1)
+        except RuntimeError:
+            shutil.copy(str(avi_seg), str(mosh_seg))
+
+        stutter_seg = work / f"rot_stutter_{idx}.avi"
+        try:
+            stutter_datamosh(mosh_seg, stutter_seg, chance=stutter_chance,
+                             dups=max(1, random.randint(max(1, stutter_dups - 3), stutter_dups + 3)))
+        except RuntimeError:
+            shutil.copy(str(mosh_seg), str(stutter_seg))
+
+        seg_mp4 = work / f"rot_seg_{idx}.mp4"
+        subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(stutter_seg), "-c:v", "libx264", "-preset", "fast", "-crf", str(crf), "-pix_fmt", "yuv420p", "-vsync", "cfr", "-an", str(seg_mp4)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        play_reversed = random.random() < 0.5
+        if play_reversed:
+            seg_final = work / f"rot_final_{idx}.mp4"
+            subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(seg_mp4), "-vf", "reverse", "-c:v", "libx264", "-preset", "fast", "-crf", str(crf), "-pix_fmt", "yuv420p", "-an", str(seg_final)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
+            seg_final = seg_mp4
+
+        freeze_dur = random.uniform(0.1, 0.35) if random.random() < 0.2 else None
+        seg_video_infos.append((seg_final, play_reversed, freeze_dur))
+        _log(f"rot segment {idx}: orig={seg_dur:.3f}s reversed={play_reversed} freeze={freeze_dur}")
+
+    silent_seg_paths = []
+    for idx, (seg_final, play_reversed, freeze_dur) in enumerate(seg_video_infos):
+        silent_seg_paths.append(seg_final.resolve())
+        if freeze_dur is not None:
+            freeze_silent = work / f"rot_freeze_silent_{idx}.mp4"
+            freeze_last_frame(seg_final, freeze_silent, freeze_dur, has_audio=False)
+            silent_seg_paths.append(freeze_silent.resolve())
+
+    silent_playlist = work / "rot_silent_playlist.txt"
+    with open(silent_playlist, "w", encoding="utf-8") as fh:
+        for p in silent_seg_paths:
+            fh.write(f"file '{p}'\n")
+
+    silent_video = work / "rot_tail_silent.mp4"
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(silent_playlist), "-c", "copy", str(silent_video)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    final_video_dur = _probe_duration(silent_video)
+    _log(f"chaotic rot: silent tail assembled, final video dur={final_video_dur:.3f}s (orig tail={tail_dur:.3f}s)", "ok")
+
+    if not has_audio:
+        _log("no audio — returning silent tail video")
+        return silent_video
+
+    src_total_dur = _probe_duration(src_for_audio)
+    audio_tail_start = intro_dur
+    audio_tail_end   = min(audio_tail_start + tail_dur, src_total_dur)
+    actual_audio_tail_dur = max(audio_tail_end - audio_tail_start, 0.0)
+
+    if actual_audio_tail_dur < 0.05:
+        _log("tail audio window is too short or past source end — returning silent video", "err")
+        return silent_video
+
+    stretch_factor = final_video_dur / actual_audio_tail_dur
+    _log(f"audio stretch factor: {stretch_factor:.4f}  ({actual_audio_tail_dur:.3f}s -> {final_video_dur:.3f}s)")
+    playback_speed = actual_audio_tail_dur / final_video_dur  # reciprocal: <1 = slow down
+    atempo_chain_parts = []
+    remaining = playback_speed
+    while remaining < 0.5:
+        atempo_chain_parts.append("atempo=0.5")
+        remaining /= 0.5
+    while remaining > 2.0:
+        atempo_chain_parts.append("atempo=2.0")
+        remaining /= 2.0
+    atempo_chain_parts.append(f"atempo={remaining:.6f}")
+    atempo_chain = ",".join(atempo_chain_parts)
+
+    distorted_audio = work / "rot_tail_audio.aac"
+    af = (f"atrim=start={audio_tail_start:.6f}:end={audio_tail_end:.6f}," f"asetpts=PTS-STARTPTS," f"volume={distort_gain:.2f}," f"aecho=0.6:0.4:25|50:0.3|0.15," f"{atempo_chain}")
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(src_for_audio), "-vn", "-af", af, "-c:a", "aac", "-b:a", "192k", "-ar", "44100", str(distorted_audio)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    _log("tail audio distorted+stretched", "ok")
+
+    rot_out = work / "rot_tail_final.mp4"
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(silent_video), "-i", str(distorted_audio), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(rot_out)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    _log(f"chaotic rot tail assembled -> {rot_out}", "ok")
+    return rot_out
+
 def run_rotting_mode(args):
     _log(f"input={args.input} output={args.output} intro={args.intro_dur}s")
     src  = Path(args.input)
@@ -1098,53 +1207,10 @@ def run_rotting_mode(args):
         subprocess.run(["ffmpeg", "-y", "-i", str(src), "-ss", str(intro_dur), "-c:v", "libx264", "-preset", "fast", "-crf", str(args.qscale), "-pix_fmt", "yuv420p", "-an", str(tail_raw),], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         _log("tail cut done", "ok")
 
-        tail_avi     = work / "tail.avi"
-        tail_mosh    = work / "tail_mosh.avi"
-        tail_stutter = work / "tail_stutter.avi"
-        _log("transcoding tail to AVI...")
-        transcode_to_avi(tail_raw, tail_avi, gop=args.gop, qscale=args.mosh_qscale)
-
-        _log("applying I-frame removal on tail...")
-        real_datamosh(tail_avi, tail_mosh, start=1, end=10**9,remove_all=True, keep_every=1)
-
-
-        _log("applying stutter on moshed tail...")
-        pframes_seen, pframes_dup, dups, iframes, frame_copy_counts = stutter_datamosh(tail_mosh, tail_stutter, chance=args.stutter_chance, dups=args.stutter_dups)
-
-        speed_factor = 1.0
-        if pframes_seen > 0:
-            speed_factor = max(1.0, dups * args.stutter_chance * pframes_seen / (pframes_seen + max(iframes, 1)))
-        _log(f"stutter speed_factor={speed_factor:.3f}")
-
-        tail_sped = work / "tail_sped.avi"
-        if speed_factor > 1.0:
-            subprocess.run(["ffmpeg", "-y", "-i", str(tail_stutter), "-vf", f"setpts=(1/{speed_factor:.6f})*PTS", "-an", str(tail_sped),], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
-            shutil.copy(str(tail_stutter), str(tail_sped))
-
-        tail_video_mp4 = work / "tail_video.mp4"
-        subprocess.run(["ffmpeg", "-y", "-i", str(tail_sped), "-c:v", "libx264", "-preset", "fast", "-crf", str(args.qscale), "-pix_fmt", "yuv420p", "-an", str(tail_video_mp4),], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        _log("tail video encoded", "ok")
-
-        tail_audio_rot = work / "tail_audio_rot.aac"
-        if add_audio and source_has_audio(src):
-            _log("building rotted audio...")
-
-            tail_dur = _probe_duration(tail_video_mp4)
-            rot_filter = (f"atrim=start={intro_dur:.6f}:end={intro_dur + tail_dur + 0.5:.6f}," f"asetpts=PTS-STARTPTS," f"volume={args.distort_gain:.2f}," f"aecho=0.7:0.5:30|60|90:0.35|0.2|0.1")
-
-            subprocess.run(["ffmpeg", "-y", "-i", str(src), "-vn", "-af", rot_filter, "-t", str(tail_dur + 0.5), "-c:a", "aac", "-b:a", "192k", "-ar", "44100", str(tail_audio_rot),], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            _log("rotted audio built", "ok")
-        else:
-            tail_audio_rot = None
-            _log("skipping audio (no audio / --no-audio)", "err")
-
-        tail_final = work / "tail_final.mp4"
-        if tail_audio_rot and tail_audio_rot.exists():
-            subprocess.run(["ffmpeg", "-y", "-i", str(tail_video_mp4), "-i", str(tail_audio_rot), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(tail_final),], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
-            subprocess.run(["ffmpeg", "-y", "-i", str(tail_video_mp4), "-c:v", "copy", "-an", str(tail_final),], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        _log("tail muxed", "ok")
+        has_audio = add_audio and source_has_audio(src)
+        _log("rot on tail...")
+        tail_final = chaotic_rot_tail(tail_raw, work, gop=args.gop, mosh_qscale=args.mosh_qscale, crf=args.qscale, stutter_chance=args.stutter_chance, stutter_dups=args.stutter_dups, has_audio=has_audio, src_for_audio=src, intro_dur=intro_dur, distort_gain=args.distort_gain)
+        _log("tail rotted", "ok")
 
         _log("concatenating intro + rotten tail...")
         playlist = work / "concat.txt"
