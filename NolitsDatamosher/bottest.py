@@ -20,6 +20,7 @@ MAX_INPUT_MB = float(os.getenv("MOSH_MAX_INPUT_MB", "100"))
 MAX_DURATION_S = float(os.getenv("MOSH_MAX_DURATION_S", "120"))
 WORK_ROOT = Path(os.getenv("MOSH_WORKDIR", str(Path(tempfile.gettempdir()) / "moshbot_jobs")))
 SCRIPT_PATH = Path(__file__).resolve().parent / "datamosh.py"
+DEFAULT_RUNMEME_MUSIC = str(Path(__file__).resolve().parent / "stupidshit.mp3")
 DISCORD_UPLOAD_LIMIT_MB = float(os.getenv("MOSH_UPLOAD_LIMIT_MB", "24"))
 
 MOSH_CPU_CORES = int(os.getenv("MOSH_CPU_CORES", "0"))
@@ -29,9 +30,101 @@ WORK_ROOT.mkdir(parents=True, exist_ok=True)
 
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 
-MODE_OPTIONS = {"real": {"start": ("--start", int, 0), "end": ("--end", int, "10**9 (whole video)"), "all": ("--all", "flag", False), "keepevery": ("--keep-every", int, 1), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "sim": {"start": ("--start", int, 0), "end": ("--end", int, "10**9 (whole video)"), "strength": ("--strength", float, 0.85), "threshold": ("--threshold", int, 18), "qscale": ("--qscale", int, 18), "noaudio": ("--no-audio", "flag", False),}, "stutter": {"chance": ("--chance", float, 0.5), "dups": ("--dups", int, 5), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False), "nospeedfix": ("--no-speed-fix", "flag", False), "audiostutter": ("--audio-stutter", "flag", False),}, "ricecake": {"chance": ("--chance", float, 1.0), "dups": ("--dups", int, 5), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False), "nospeedfix": ("--no-speed-fix", "flag", False),}, "ytp": {"iterations": ("--iterations", int, 6), "chopmin": ("--chop-min", float, "auto"), "chopmax": ("--chop-max", float, "auto"), "freezechance": ("--freeze-chance", float, 0.0), "freezedur": ("--freeze-dur", float, 0.4), "qscale": ("--qscale", int, 18), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "ytpstutter": {"iterations": ("--iterations", int, 6), "chopmin": ("--chop-min", float, "auto"), "chopmax": ("--chop-max", float, "auto"), "freezechance": ("--freeze-chance", float, 0.0), "freezedur": ("--freeze-dur", float, 0.4), "chance": ("--chance", float, 0.5), "dups": ("--dups", int, 4), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "scatter": {"chopmin": ("--chop-min", float, 0.3), "chopmax": ("--chop-max", float, 2.0), "resample": ("--resample", "flag", False), "count": ("--count", int, 30), "qscale": ("--qscale", int, 18), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "runmeme": {"music": ("--music", str, r"D:\Codeprojects\NolitsDatamosher\stupidshit.mp3"), "chopdur": ("--chop-dur", float, 0.5), "loopreps": ("--loop-reps", int, 4), "jump": ("--jump", float, 2.0), "beats": ("--beats", int, 3), "qscale": ("--qscale", int, 18), "keeptemp": ("--keep-temp", "flag", False),}, "rotting": {"introdur":     ("--intro-dur",      float, 3.0), "stutterchance":("--stutter-chance", float, 0.6), "stutterdups":  ("--stutter-dups",   int,   6), "gop":          ("--gop",            int,   30), "moshqscale":   ("--mosh-qscale",    int,   3), "qscale":       ("--qscale",         int,   18), "distortgain":  ("--distort-gain",   float, 8.0), "noaudio":      ("--no-audio",       "flag", False), "keeptemp":     ("--keep-temp",      "flag", False),},}
+MODE_OPTIONS = {"real": {"start": ("--start", int, 0), "end": ("--end", int, "10**9 (whole video)"), "all": ("--all", "flag", False), "keepevery": ("--keep-every", int, 1), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "sim": {"start": ("--start", int, 0), "end": ("--end", int, "10**9 (whole video)"), "strength": ("--strength", float, 0.85), "threshold": ("--threshold", int, 18), "qscale": ("--qscale", int, 18), "noaudio": ("--no-audio", "flag", False),}, "stutter": {"chance": ("--chance", float, 0.5), "dups": ("--dups", int, 5), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False), "nospeedfix": ("--no-speed-fix", "flag", False), "audiostutter": ("--audio-stutter", "flag", False),}, "ricecake": {"chance": ("--chance", float, 1.0), "dups": ("--dups", int, 5), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False), "nospeedfix": ("--no-speed-fix", "flag", False),}, "ytp": {"iterations": ("--iterations", int, 6), "chopmin": ("--chop-min", float, "auto"), "chopmax": ("--chop-max", float, "auto"), "freezechance": ("--freeze-chance", float, 0.0), "freezedur": ("--freeze-dur", float, 0.4), "qscale": ("--qscale", int, 18), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "ytpstutter": {"iterations": ("--iterations", int, 6), "chopmin": ("--chop-min", float, "auto"), "chopmax": ("--chop-max", float, "auto"), "freezechance": ("--freeze-chance", float, 0.0), "freezedur": ("--freeze-dur", float, 0.4), "chance": ("--chance", float, 0.5), "dups": ("--dups", int, 4), "gop": ("--gop", int, 30), "qscale": ("--qscale", int, 3), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "scatter": {"chopmin": ("--chop-min", float, 0.3), "chopmax": ("--chop-max", float, 2.0), "resample": ("--resample", "flag", False), "count": ("--count", int, 30), "qscale": ("--qscale", int, 18), "keeptemp": ("--keep-temp", "flag", False), "noaudio": ("--no-audio", "flag", False),}, "runmeme": {"music": ("--music", str, DEFAULT_RUNMEME_MUSIC), "chopdur": ("--chop-dur", float, 0.5), "loopreps": ("--loop-reps", int, 4), "jump": ("--jump", float, 2.0), "beats": ("--beats", int, 3), "qscale": ("--qscale", int, 18), "keeptemp": ("--keep-temp", "flag", False),}, "rotting": {"introdur":     ("--intro-dur",      float, 3.0), "stutterchance":("--stutter-chance", float, 0.6), "stutterdups":  ("--stutter-dups",   int,   6), "gop":          ("--gop",            int,   30), "moshqscale":   ("--mosh-qscale",    int,   3), "qscale":       ("--qscale",         int,   18), "distortgain":  ("--distort-gain",   float, 8.0), "noaudio":      ("--no-audio",       "flag", False), "keeptemp":     ("--keep-temp",      "flag", False),},}
 
-MODE_DESCRIPTIONS = {"real": "I-frame removal", "sim": "OpenCV framebleed simulation", "stutter": "randomly duplicates P-frames for stutter effect.", "ricecake": "naive raw bytesplit P-frame duplication", "ytp": "random forward/reverse stutter loop splices", "ytpstutter": "splices with P-frame stutter on loop segments", "scatter": "chop video into random segments and shuffle them", "runmeme": "that one running meme", "rotting": "rot with stutter + decayed/stretched glitchy audio",}
+MODE_DESCRIPTIONS = {"real": "I-frame removal", "sim": "OpenCV framebleed simulation", "stutter": "randomly duplicates pframes for stutter effect.", "ricecake": "naive raw bytesplit P-frame duplication", "ytp": "random forward/reverse stutter loop splices", "ytpstutter": "splices with P-frame stutter on loop segments", "scatter": "chop video into random segments and shuffle them", "runmeme": "that one running meme", "rotting": "rot with stutter + decayed/stretched glitchy audio",}
+
+PARAM_HELP = {
+    "real": {
+        "start": "frame number to start removing keyframes from",
+        "end": "frame number to stop removing keyframes at",
+        "all": "flag that nukes every keyframe in the whole vid instead of framerange",
+        "keepevery": "only kills every nth keyframe in the range instead of all of them",
+        "gop": "group of pictures size for the avi transcode",
+        "qscale": "Output quality higher value = lower quality",
+        "keeptemp": "flag, dont delete the messy temp files it makes while moshing",
+        "noaudio": "flag, strips the audio out of the output",
+    },
+    "sim": {
+        "start": "frame to start framebleed on",
+        "end": "frame to stop framebleed on",
+        "strength": "how strong the bleed is (closer to 1 = frames stick around longer and blend more)",
+        "threshold": "how much motion is needed before pixels refresh",
+        "qscale": "Output quality higher value = lower quality",
+        "noaudio": "flag, strips the audio out of the output",
+    },
+    "stutter": {
+        "chance": "chance that any given pframe gets duplicated",
+        "dups": "how many copies to make when a pframe gets picked for dupe",
+        "gop": "group of pictures size for the avi transcode",
+        "qscale": "Output quality higher value = lower quality",
+        "keeptemp": "flag, dont delete the messy temp files",
+        "noaudio": "flag, strips the audio out of the output",
+        "nospeedfix": "flag, normally the vid gets sped back up since duping frames slows it down, this skips that and leaves it slow",
+        "audiostutter": "flag, also stutters the audio to roughly match the video instead of leaving it clean",
+    },
+    "ricecake": {
+        "chance": "chance that any given pframe gets duplicated",
+        "dups": "how many copies to make when a p-frame gets picked for dupe",
+        "gop": "group of pictures size for the avi transcode",
+        "qscale": "Output quality higher value = lower quality",
+        "keeptemp": "flag, dont delete the messy temp files",
+        "noaudio": "flag, strips the audio out of the output",
+        "nospeedfix": "flag, leaves the vid slowed down from the dupes instead of speeding it back up",
+    },
+    "ytp": {
+        "iterations": "roughly how many stutter loops get connected in",
+        "chopmin": "shortest a chopped segment can be in seconds",
+        "chopmax": "longest a chopped segment can be in seconds",
+        "freezechance": "chance a chop freezes on the last frame for a sec",
+        "freezedur": "how long the freeze frame holds in seconds when it happens",
+        "qscale": "Output quality higher value = lower quality",
+        "keeptemp": "flag, dont delete the messy temp files",
+        "noaudio": "flag, strips the audio out of the output",
+    },
+    "ytpstutter": {
+        "iterations": "roughly how many stutter loops get connected in",
+        "chopmin": "shortest a chopped segment can be in seconds",
+        "chopmax": "longest a chopped segment can be in seconds",
+        "freezechance": "chance a chop freezes on the last frame for a sec",
+        "freezedur": "how long the freeze frame holds in seconds when it happens",
+        "chance": "chance a stutter loop also gets its pframes duped on top",
+        "dups": "how many copies to make for those duped pframes",
+        "gop": "group of pictures size for the stutter segments",
+        "qscale": "quality for the stutter segments, also doubles as the final output quality",
+        "keeptemp": "flag, dont delete the messy temp files",
+        "noaudio": "flag, strips the audio out of the output",
+    },
+    "scatter": {
+        "chopmin": "shortest a random chopped segment can be in seconds",
+        "chopmax": "longest a random chopped segment can be in seconds",
+        "resample": "flag, instead of shuffling every segment once it randomly picks segments with repeats allowed some parts repeat some get skipped",
+        "count": "how many segments to grab when resample is on",
+        "qscale": "Output quality higher value = lower quality",
+        "keeptemp": "flag, dont delete the messy temp files",
+        "noaudio": "flag, strips the audio out of the output",
+    },
+    "runmeme": {
+        "music": "!! Indev !! path to the music file to mix in",
+        "chopdur": "how long each fwd and reverse chop is in seconds",
+        "loopreps": "how many fwd+rev pairs happen per beat, more = longer beats",
+        "jump": "how far it jumps ahead in the source between beats, in seconds",
+        "beats": "how many beat loops to make total",
+        "qscale": "Output quality higher value = lower quality",
+        "keeptemp": "flag, dont delete the messy temp files",
+    },
+    "rotting": {
+        "introdur": "seconds of normal clean video before everything starts rotting",
+        "stutterchance": "chance a p-frame gets duplicated once the rot kicks in",
+        "stutterdups": "how many copies to make for those duped pframes",
+        "gop": "group of pictures size for the avi transcode used during the rot part",
+        "moshqscale": "quality of that internal avi transcode",
+        "qscale": "quality for the stutter segments, also doubles as the final output quality",
+        "distortgain": "how much the audio gets overdriven",
+        "noaudio": "flag, strips the audio out of the output",
+        "keeptemp": "flag, dont delete the messy temp files",
+    },
+}
 
 def extract_cpucores_override(tokens: list[str]) -> tuple[list[str], int | None, str | None]:
     remaining = []
@@ -88,7 +181,11 @@ def build_help_embed(mode: str | None = None) -> discord.Embed:
     lines = []
     for key, (flag, typ, default) in MODE_OPTIONS[mode].items():
         typename = "flag" if typ == "flag" else typ.__name__
-        lines.append(f"`{key}` ({typename}, default `{default}`)")
+        explainer = PARAM_HELP.get(mode, {}).get(key)
+        line = f"`{key}` ({typename}, default `{default}`)"
+        if explainer:
+            line += f"\n  {explainer}"
+        lines.append(line)
     embed = discord.Embed(title=f"Options for `{mode}`", description=MODE_DESCRIPTIONS[mode] + "\n\n" + "\n".join(lines), color=discord.Color.purple(),)
     embed.set_footer(text=f"example: {COMMAND_PREFIX}mosh {mode} " + " ".join(f"{k}={v}" for k, (f, t, v) in list(MODE_OPTIONS[mode].items())[:2] if t != "flag"))
     return embed

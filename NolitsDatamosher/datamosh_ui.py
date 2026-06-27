@@ -76,7 +76,7 @@ class DATAMOSH_UI(tk.Tk):
         self.scatter_keep_temp = tk.BooleanVar(value=False)
         self.scatter_add_audio = tk.BooleanVar(value=True)
 
-        self.runmeme_music = tk.StringVar(value=r"D:\Codeprojects\NolitsDatamosher\stupidshit.mp3")
+        self.runmeme_music = tk.StringVar(value=str(SCRIPT_DIR / "stupidshit.mp3"))
         self.runmeme_chop_dur = tk.DoubleVar(value=0.5)
         self.runmeme_loop_reps = tk.IntVar(value=4)
         self.runmeme_jump = tk.DoubleVar(value=2.0)

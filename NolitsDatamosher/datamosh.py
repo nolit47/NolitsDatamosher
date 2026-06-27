@@ -9,6 +9,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_RUNMEME_MUSIC = SCRIPT_DIR / "stupidshit.mp3"
+
 AVIIF_KEYFRAME = 0x10
 
 RICECAKE_MARKER = b"00dc"
@@ -1002,7 +1005,11 @@ def run_runmeme_mode(args):
     work_dir = out.with_name(out.stem + "_runmeme_tmp")
 
     if not music.exists():
-        raise RuntimeError(f"Music file not found: {music}")
+        raise RuntimeError(
+            f"Music file not found: {music}\n"
+            f"  Either drop a file named 'stupidshit.mp3' next to datamosh.py ({SCRIPT_DIR}), "
+            f"or pass --music <path> to point at a specific track."
+        )
 
     if work_dir.exists():
         shutil.rmtree(work_dir)
@@ -1326,7 +1333,7 @@ def main():
     runmeme = sub.add_parser("runmeme", help="3-beat fwd/rev loop meme with music mix (stupidshit.mp3 style)")
     runmeme.add_argument("input")
     runmeme.add_argument("output")
-    runmeme.add_argument("--music", default=r"D:\Codeprojects\NolitsDatamosher\stupidshit.mp3", help="path to music file to mix in")
+    runmeme.add_argument("--music", default=str(DEFAULT_RUNMEME_MUSIC), help="path to music file to mix in (default: stupidshit.mp3 next to this script)")
     runmeme.add_argument("--chop-dur", type=float, default=0.5, help="duration of each fwd/rev chop in seconds (default 0.5)")
     runmeme.add_argument("--loop-reps", type=int, default=4, help="how many fwd+rev pairs per beat, each beat = loop_reps * chop_dur * 2 seconds (default 4 → 4s per beat)")
     runmeme.add_argument("--jump", type=float, default=2.0, help="how far to jump in source video between beats in seconds (default 2.0)")
