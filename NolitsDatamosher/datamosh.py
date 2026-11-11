@@ -29,9 +29,11 @@ def main():
     if callable(needs_ffmpeg):
         needs_ffmpeg = needs_ffmpeg(args)
 
-    if needs_ffmpeg and shutil.which("ffmpeg") is None:
-        _log("FFmpeg not found", "err")
-        sys.exit(1)
+    if needs_ffmpeg:
+        for tool in ("ffmpeg", "ffprobe"):
+            if shutil.which(tool) is None:
+                _log(f"{tool} not found in PATH", "err")
+                sys.exit(1)
 
     try:
         args.func(args)

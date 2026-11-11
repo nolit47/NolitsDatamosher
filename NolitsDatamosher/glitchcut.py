@@ -2,7 +2,9 @@ import argparse
 import json
 import os
 import random
+import shutil
 import subprocess
+import sys
 
 
 def run(cmd):
@@ -131,6 +133,10 @@ def stutter_loops(rng, length, start_pos, sr):
 
 
 def main():
+    for tool in ("ffmpeg", "ffprobe"):
+        if shutil.which(tool) is None:
+            sys.exit(f"{tool} not found in PATH")
+
     ap = argparse.ArgumentParser()
 
     ap.add_argument("input")
